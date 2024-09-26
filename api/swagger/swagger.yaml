@@ -653,6 +653,55 @@ paths:
           description: Error
           schema:
             $ref: "#/definitions/ErrorResponse"
+  /getOrthoMatri:
+    get:
+      summary: "Récupérer les orthophonistes par matricule"
+      description: "Retourne les orthophonistes avec un matricule spécifique."
+      parameters:
+        - name: matricule
+          in: query
+          required: true
+          description: "Le matricule de l'orthophoniste"
+          type: string
+      responses:
+        '200':
+          description: "Liste des orthophonistes"
+          schema:
+            type: array
+            items:
+              $ref: '#/definitions/User'
+        '400':
+          description: "Matricule manquant"
+        '404':
+          description: "Aucun orthophoniste trouvé"
+        '500':
+          description: "Erreur interne lors de la récupération des orthophonistes"
+
+  /getMypatients:
+    get:
+      summary: "Récupérer les patients par matricule"
+      description: "Retourne les patients associés à un matricule spécifique."
+      parameters:
+        - name: matricule
+          in: query
+          required: true
+          description: "Le matricule de l'orthophoniste"
+          type: string
+      responses:
+        '200':
+          description: "Liste des patients"
+          schema:
+            type: array
+            items:
+              $ref: '#/definitions/User'
+        '400':
+          description: "Matricule manquant"
+        '404':
+          description: "Aucun patient trouvé"
+        '500':
+          description: "Erreur interne lors de la récupération des patients"
+
+
   /translate:
     x-swagger-router-controller: translate
     post:
@@ -1371,6 +1420,11 @@ definitions:
       locale:
         type: string
         enum:  &APP_LANGS ['ar-SA','bn-BD','cs-CZ','da-DK','de-DE','el-GR','en-US','en-GB','es-ES','fi-FI','fr-FR','he-IL','hi-IN','hu-HU','id-ID','it-IT','ja-JP','km-KH','ko-KR','ne-NP','nl-NL','no-NO','pl-PL','pt-BR','pt-PT','ro-RO','ru-RU','si-LK','sk-SK','sv-SE','th-TH','tr-TR','uk-UA','vi-VN','zh-CN','zu-ZA']
+      matricule:
+        type: string
+      profession:
+        type: string
+  
   UserUpdate:
     type: object
     properties:
