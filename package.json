@@ -22,6 +22,7 @@
   ],
   "main": "app.js",
   "dependencies": {
+    "@google-analytics/data": "^4.8.0",
     "@snyk/protect": "1.1056.0",
     "applicationinsights": "^2.7.3",
     "axios": "^1.6.4",

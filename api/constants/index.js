@@ -1,6 +1,6 @@
 const DEFAULT_LANG = 'en-US';
 const DEFAULT_CELL_SIZE = 'medium';
-const DEFAULT_GA_VIEW = '162469865';
+const DEFAULT_GA_VIEW = '459895507';
 const MOBILE_GA_VIEW = '205673218';
 const DEFAULT_FORMAT = 'cboard';
 const APP_LANGS = [

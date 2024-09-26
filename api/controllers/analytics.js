@@ -3,94 +3,116 @@
 const { google } = require('googleapis');
 const analyticsreporting = google.analyticsreporting('v4');
 const constants = require('../constants');
+const { BetaAnalyticsDataClient } = require('@google-analytics/data');
+const analyticsDataClient = new BetaAnalyticsDataClient();
+const propertyId = constants.DEFAULT_GA_VIEW;
 
 module.exports = {
   batchGet: batchGet,
   userActivity: userActivity
 };
 
-async function gapiAuth() {
-  const scopes = ['https://www.googleapis.com/auth/analytics'];
-  const auth = new google.auth.GoogleAuth({ scopes: scopes });
-  const authClient = await auth.getClient();
-  google.options({ auth: authClient });
-}
-
 async function batchGet(req, res) {
   try {
-    await gapiAuth();
+
     const reportRequests = req.body.map(requestReport => {
+      
+
       const report = {
-        viewId: requestReport.mobileView ? constants.MOBILE_GA_VIEW : constants.DEFAULT_GA_VIEW,
+        property: `properties/${propertyId}`, 
         dateRanges: [
           {
             startDate: requestReport.startDate,
             endDate: requestReport.endDate
           }
         ],
+      
         metrics: [
           {
-            expression: `ga:${requestReport.metric}`
+            name: requestReport.metric 
           }
         ],
-        orderBys:
-          [
-            { fieldName: `ga:${requestReport.metric}`, sortOrder: "DESCENDING" }
-          ],
         dimensions: [
           {
-            name: 'ga:clientId'
-          }, {
-            name: `ga:${requestReport.dimension}`
+            name: requestReport.dimension 
+          },
+          { name: 'customEvent:event_s' }, 
+        ],
+        orderBys: [
+          {
+            metric: {
+              metricName: requestReport.metric 
+            },
+            desc: true
           }
         ],
-        dimensionFilterClauses: [
-          {
-            filters: [
+        dimensionFilter: {
+          andGroup: {
+            expressions: [
               {
-                dimensionName: "ga:clientId",
-                operator: "EXACT",
-                expressions: [requestReport.clientId]
+                filter:
+                  {fieldName: 'customEvent:event_s',
+                  stringFilter: {
+                    matchType: 'EXACT',
+                    value: requestReport.clientId 
+                  }
+              }
               }
             ]
           }
-        ]
+        }
       };
+
+      
       if (requestReport.filter) {
-        const newFilter = {
-          filters: [
-            {
-              dimensionName: `ga:${requestReport.filter.name}`,
-              operator: "EXACT",
-              expressions: [requestReport.filter.value]
-            }
-          ]
-        };
-        report.dimensionFilterClauses.push(newFilter);
+        report.dimensionFilter.andGroup.expressions.push({filter:{
+          fieldName: requestReport.filter.name,
+          stringFilter: {
+            matchType: 'EXACT',
+            value: requestReport.filter.value
+          }
+        }});
       }
-      if (requestReport.pageSize) {
-        report['pageSize'] = requestReport.pageSize;
-      }
+
+      
       return report;
     });
-    const fullRequest = {
-      requestBody: {
-        reportRequests: reportRequests
-      }
-    };
-    const report = await analyticsreporting.reports.batchGet(fullRequest);
-    return res.status(200).json(report.data);
+
+    
+    const reportPromises = reportRequests.map(async (request) => {
+      return analyticsDataClient.runReport({
+        property: request.property,
+        dateRanges: request.dateRanges,
+        dimensions: request.dimensions,
+        metrics: request.metrics,
+        orderBys: request.orderBys,
+        dimensionFilter: request.dimensionFilter,
+        limit: 1000 
+      });
+    });
+
+    
+    const reports = await Promise.all(reportPromises);
+
+   
+    res.status(200).json({
+      message: 'Reports generated successfully',
+      reports: reports.map(report => report[0]) 
+    });
+    
   } catch (err) {
+    
     return res.status(409).json({
       message: 'Error getting analytics',
-      error: err.message
+      error: err.message,
+      errdet: { ...err }
     });
   }
 }
 
 async function userActivity(req, res) {
   try {
-    //TODO
+    //TODO: Implement user activity logic
     return res.status(200).json({});
   } catch (err) {
     return res.status(409).json({
@@ -99,5 +121,3 @@ async function userActivity(req, res) {
     });
   }
 }
-
-gapiAuth();
