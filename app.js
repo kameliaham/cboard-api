@@ -2,6 +2,9 @@
 
 require('dotenv-defaults').config();
 
+
+
+
 const appInsights = require('applicationinsights');
 
 const cors = require('cors');
@@ -24,6 +27,10 @@ const FacebookToken = require('./api/passport/facebookToken');
 const Apple = require('./api/passport/apple');
 const morgan = require('morgan');
 const config = require('./config');
+const { getOrthoMatri } = require('./api/controllers/user');
+const { getMypatients } = require('./api/controllers/user');
+
+
 
 const app = express();
 
@@ -116,6 +123,18 @@ swaggerTools.initializeMiddleware(swaggerConfig, async function (middleware) {
   };
 
   app.use(middleware.swaggerRouter(routerConfig));
+  app.get('/getOrthoMatri', getOrthoMatri); 
+  app.get('/getMypatients', getMypatients); 
+
+
+
+  console.log('Routes disponibles:');
+  app._router.stack.forEach((r) => {
+    if (r.route) {
+      console.log(`${r.route.stack[0].method} ${r.route.path}`);
+    }
+  });
+
 
   app.use(middleware.swaggerUi());
 
@@ -165,4 +184,30 @@ async function startServer(app) {
   });
 }
 
-module.exports = app; // for testing
+
+
+
+
+
+// module.exports = app; // for testing
+// const sgMail = require('@sendgrid/mail');
+// sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+
+// app.get('/send-test-email', (req, res) => {
+//   const msg = {
+//     to: 'kamiliaham94@gmail.com',  // Replace with your recipient email
+//     from: 'lk_hamadene@esi.dz',  // Replace with your verified sender email
+//     subject: 'Test Email from SendGrid',
+//     text: 'This is a test email from SendGrid.',
+//   };
+
+//   sgMail.send(msg)
+//     .then(() => {
+//       console.log('Test email sent successfully');
+//       res.status(200).send('Test email sent successfully!');
+//     })
+//     .catch((error) => {
+//       console.error('Error sending test email:', error.response.body);
+//       res.status(500).send('Error sending test email');
+//     });
+// });

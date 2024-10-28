@@ -15,6 +15,7 @@ const { findIpLocation, isLocalIp } = require('../helpers/localize');
 const Subscribers = require('../models/Subscribers');
 
 const config = require('../../config');
+const { log } = require('console');
 const { CBOARD_PROD_URL, CBOARD_QA_URL, LOCALHOST_PORT_3000_URL } = config;
 
 module.exports = {
@@ -34,6 +35,8 @@ module.exports = {
   forgotPassword: forgotPassword,
   storePassword: storePassword,
   proxyOauth: proxyOauth,
+  getMypatients : getMypatients,
+  getOrthoMatri : getOrthoMatri
 };
 
 const USER_MODEL_ID_TYPE = {
@@ -80,63 +83,76 @@ async function getSubscriber(user) {
 
 async function createUser(req, res) {
   try {
-    if(!isLocalIp(req.ip))
+    if (!isLocalIp(req.ip))
       req.body.location = await findIpLocation(req.ip);
   } catch (error) {
     console.error(error.message);
   }
+
   req.body.isFirstLogin = true;
-  const user = new User(req.body);
-  nev.createTempUser(user, function (err, existingPersistentUser, newTempUser) {
-    if (err) {
-      return res.status(404).json({
-        message: err
-      });
-    }
-    // user already exists in persistent collection
-    if (existingPersistentUser) {
-      return res.status(409).json({
-        message:
-          'You have already signed up and confirmed your account. Did you forget your password?'
-      });
-    }
-    // new user created
-    if (newTempUser) {
-      const URL = newTempUser[nev.options.URLFieldName];
 
-      let domain = req.headers.origin;
+  if (!req.body.profession || !['orthophoniste', 'patient'].includes(req.body.profession)) {
+    return res.status(400).json({
+      message: 'Profession is required and must be either "orthophoniste" or "patient".'
+    });
+  }
 
-      const isValidDomain = domain =>
-        [CBOARD_PROD_URL, CBOARD_QA_URL, LOCALHOST_PORT_3000_URL].includes(domain);
-      //if origin is private insert default hostname
-      if (!domain || !isValidDomain(domain)) {
-        domain = CBOARD_PROD_URL;
-      }
-
-      nev.sendVerificationEmail(newTempUser.email, domain, URL, function (err, info) {
-        if (err) {
-          return res.status(500).json({
-            message: 'ERROR: sending verification email FAILED ' + info
+  if (req.body.profession === 'patient') {
+    // Check if matricule is provided (not empty)
+    if (req.body.matricule) {
+      try {
+        // Verify the matricule exists for an orthophoniste
+        const orthophoniste = await User.findOne({ matricule: req.body.matricule, profession: 'orthophoniste' }).exec();
+        if (!orthophoniste) {
+          return res.status(400).json({
+            message: 'The provided matricule does not correspond to any existing orthophoniste.'
           });
         }
-
-        return res.status(200).json({
-          success: 1,
-          url: URL,
-          message:
-              'An email has been sent to you. Please check it to verify your account.'
+      } catch (error) {
+        return res.status(500).json({
+          message: 'Error occurred while validating the matricule.'
         });
-      });
+      }
+    }
+    // If matricule is not provided, no validation is required
+  }
+  
 
-      // user already exists in temporary collection!
-    } else {
-      return res.status(409).json({
-        message:
-          'You have already signed up. Please check your email to verify your account.'
+  // Create a new user instance
+  const user = new User(req.body);
+
+  // Check if user already exists
+  User.findOne({ email: user.email }, function (err, existingUser) {
+    if (err) {
+      return res.status(500).json({
+        message: 'Error occurred while checking for existing user.'
       });
     }
+
+    // If user already exists, return conflict status
+    if (existingUser) {
+      return res.status(409).json({
+        message: 'You have already signed up and confirmed your account. Did you forget your password?'
+      });
+    }
+
+    // Save the new user directly in the database
+    user.save(function (err) {
+      if (err) {
+        return res.status(500).json({
+          message: 'Error occurred while saving the user.'
+        });
+      }
+
+      // If user is successfully saved, return success response
+      return res.status(200).json({
+        success: 1,
+        message: 'User successfully created and verified!'
+      });
+    });
   });
 }
+
 
 async function proxyOauth(req, res) {
   const {accessToken, refreshToken, profile} = req.body;
@@ -318,9 +334,8 @@ async function listUser(req, res) {
       query,
       populate: ['communicators']
     },
-    req.query
+    req.query    
   );
-
   return res.status(200).json(response);
 }
 
@@ -349,7 +364,6 @@ async function getUser(req, res) {
         message: `User does not exist. User Id: ${id}`
       });
     }
-
     const settings = await getSettings(user);
     const response = {
       ...user.toJSON(),
@@ -369,26 +383,29 @@ const UPDATEABLE_FIELDS = [
   'email',
   'name',
   'birthdate',
+  'profession',
+  'matricule',
   'locale',
   'location',
   'isFirstLogin'
 ]
 
 function updateUser(req, res) {
+  console.log("here updateuser");
   const id = req.swagger.params.id.value;
 
   if (!req.user.isAdmin && req.auth.id !== id) {
     return res.status(403).json({
       message: 'You are not authorized to update this user.'
-    })
+    });
   }
-
+  console.log("here auth");
   User.findById(id)
     .populate('communicators')
     .exec(async function (err, user) {
       if (err) {
         return res.status(500).json({
-          message: 'Error updating user. ',
+          message: 'Error updating user.',
           error: err.message
         });
       }
@@ -397,9 +414,24 @@ function updateUser(req, res) {
           message: 'Unable to find user. User Id: ' + id
         });
       }
+      console.log("here find user");
+
+      if (req.body.matricule) {
+        const matriculeExists = await User.findOne({ matricule: req.body.matricule });
+        console.log("findd or not",matriculeExists);
+        
+        // Si le matricule existe et que ce n'est pas le même utilisateur
+        if (!matriculeExists) {
+          console.log("dont enter");
+            return res.status(400).json({
+              message: "Le matricule n'existe pas pour un orthophoniste."
+              
+            });
+          }
+        }
+
       for (let key in req.body) {
         if (UPDATEABLE_FIELDS.includes(key)) {
-
           if (key === 'location') {
             if ((user.location && user.location.country) || isLocalIp(req.ip)) continue;
             try {
@@ -413,6 +445,7 @@ function updateUser(req, res) {
           user[key] = req.body[key];
         }
       }
+
       try {
         const dbUser = await user.save();
         if (!dbUser) {
@@ -421,21 +454,72 @@ function updateUser(req, res) {
           });
         }
         return res.status(200).json(user);
-      }
-      catch (e) {
+      } catch (e) {
         return res.status(500).json({
-          message: 'Error saving user. ',
-          error: err.message
+          message: 'Error saving user.',
+          error: e.message
         });
       }
     });
 }
+
+async function getOrthoMatri(req, res) {
+  console.log("getOrtho");
+
+  const { matricule } = req.query; // Ensure matricule is correctly accessed from query
+  console.log("matricule:", matricule);
+
+  if (!matricule) {
+    return res.status(400).json({ message: 'Matricule is required.' });
+  }
+
+  try {
+    const users = await User.find({ matricule, profession: 'orthophoniste' }).exec();
+    console.log("Orthophonistes found:", users);
+
+    if (users.length === 0) {
+      return res.status(404).json({ message: 'No orthophoniste found with the provided matricule.' });
+    }
+    return res.status(200).json(users);
+  } catch (error) {
+    console.error('Error fetching orthophonistes by matricule:', error);
+    return res.status(500).json({ message: 'Error fetching orthophonistes.' });
+  }
+}
+
+async function getMypatients(req, res) {
+  console.log("getMypatients");
+
+  const { matricule } = req.query; // Ensure matricule is correctly accessed from query
+  console.log("matricule:", matricule);
+
+  if (!matricule) {
+    return res.status(400).json({ message: 'Matricule is required.' });
+  }
+
+  try {
+    const patients = await User.find({ matricule, profession: 'patient' }).exec();
+    console.log("Patients found:", patients);
+
+    if (patients.length === 0) {
+      return res.status(404).json({ message: 'No patients found with the provided matricule.' });
+    }
+    return res.status(200).json(patients);
+  } catch (error) {
+    console.error('Error fetching patients by matricule:', error);
+    return res.status(500).json({ message: 'Error fetching patients.' });
+  }
+}
+
+
+
 
 function loginUser(req, res) {
   const { email, password } = req.body;
 
   User.authenticate(email, password, async (error, user) => {
     if (error || !user) {
+      console.error('error',error);
       return res.status(401).json({
         message: 'Wrong email or password.'
       });
